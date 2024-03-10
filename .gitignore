@@ -124,3 +124,9 @@ dmypy.json
 .pyre/
 
 .idea/
+
+Data/geotiff/
+
+*.H5
+
+*.tif
