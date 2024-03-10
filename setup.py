@@ -7,7 +7,12 @@ setup(
     include_package_data=True,
     install_requires=[
         'typer',
-        # other dependencies
+        'h5py',
+        'cfgrib',
+        'xarray',
+        'gdal',
+        'numpy',
+        'tqdm',
     ],
     entry_points={
         'console_scripts': [

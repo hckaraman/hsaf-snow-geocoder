@@ -27,17 +27,26 @@ def validate_product(product: str) -> bool:
     return product.upper() in valid_products
 
 
+def validate_crs(crs: str) -> bool:
+    valid_crs = ['4326', 'GEOS']
+    return crs in valid_crs
+
+
 @app.command()
 def geocode(input_file: str = typer.Option(..., "-i", "--input-file",
                                            help="'H10' and 'H34' expect HDF files, others expect GRIB2."),
             output_file: str = typer.Option(..., "-o", "--output-file", help="Geotiff file to be created."),
             product: str = typer.Option(..., "-p", "--product",
                                         help="Product code. Valid products are ['H10', 'H34', 'H13', 'H12', 'H35']. "),
-            crs: int = typer.Option(4326, "--crs",
-                                    help="Coordinate Reference System, default to 4326, H10 and H34 can also be projected to default GEOS proejction.")):
+            crs: str = typer.Option('4326', "--crs",
+                                    help="Coordinate Reference System, default to 4326, H10 and H34 can also be projected to default GEOS projection.")):
     # Validate product first to ensure we check the file with the correct expected format
     if not validate_product(product):
         typer.echo(f"Invalid product code. Valid options are: ['H10', 'H34', 'H13', 'H12', 'H35'].")
+        raise typer.Exit(code=1)
+
+    if not validate_crs(crs):
+        typer.echo(f"Invalid crs code. Valid options are: ['4326' , 'GEOS'].")
         raise typer.Exit(code=1)
 
     # Validate input file

@@ -10,15 +10,14 @@ import numpy as np
 from osgeo import gdal, osr
 import xarray as xr
 from pathlib import Path
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 class Geocoder:
-    def __init__(self, product, file, outfile,crs=4326):
+    def __init__(self, product, file, outfile,crs='4326'):
         self.projection_dict = {
-            'MSG': 'PROJCS["unknown",GEOGCS["GCS_unknown",DATUM["D_unknown",SPHEROID["unknown",6378169,295.488065897014]],PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]],PROJECTION["Geostationary_Satellite"],PARAMETER["central_meridian",0],PARAMETER["satellite_height",35785831],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH]]',
+            'GEOS': 'PROJCS["unknown",GEOGCS["GCS_unknown",DATUM["D_unknown",SPHEROID["unknown",6378169,295.488065897014]],PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]],PROJECTION["Geostationary_Satellite"],PARAMETER["central_meridian",0],PARAMETER["satellite_height",35785831],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH]]',
             'WGS_84': 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AXIS["Latitude",NORTH],AXIS["Longitude",EAST],AUTHORITY["EPSG","4326"]]',
         }
 
@@ -35,7 +34,7 @@ class Geocoder:
         self.file = file
         self.outfile = outfile
         self.engine = 'cfgrib' if self.product not in ['H10', 'H34'] else 'netcdf4'
-        self.projection_key = 'MSG' if self.product in ['H10', 'H34'] else 'WGS_84'
+        self.projection_key = 'GEOS' if self.product in ['H10', 'H34'] else 'WGS_84'
         self.crs = crs
         self.rotation = self.product in ['H10', 'H34']
         self.tempfile = None
@@ -52,7 +51,7 @@ class Geocoder:
         driver = gdal.GetDriverByName("GTiff")
         options = ['COMPRESS=LZW']
 
-        if self.projection_key == 'MSG' and self.crs == 4326:
+        if self.projection_key == 'GEOS' and self.crs == '4326':
             with tempfile.NamedTemporaryFile(delete=False, suffix='.tif') as tmp:
                 self.temp_filename = tmp.name
         else:
@@ -79,7 +78,7 @@ class Geocoder:
             pbar.update()
             self.write_data(data)
             pbar.update()
-            if self.projection_key == 'MSG' and self.crs == 4326:
+            if self.projection_key == 'GEOS' and self.crs == '4326':
                 self.msg_to_wgs84()
                 os.remove(self.temp_filename)
             print(f'{self.outfile} is created')
