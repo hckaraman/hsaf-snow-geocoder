@@ -10,6 +10,7 @@ file_format_dict = {
     'H10': ['hdf', 'h5', 'H5'],
     'H34': ['hdf', 'h5', 'H5'],
     'H13': ['grib2'],
+    'H11': ['grib2'],
     'H12': ['grib2'],
     'H35': ['grib2']
 }
@@ -23,7 +24,7 @@ def validate_file(file_path: str, product: str) -> bool:
 
 # Function to validate product
 def validate_product(product: str) -> bool:
-    valid_products = ['H10', 'H34', 'H13', 'H12', 'H35']
+    valid_products = ['H10', 'H11', 'H34', 'H13', 'H12', 'H35']
     return product.upper() in valid_products
 
 

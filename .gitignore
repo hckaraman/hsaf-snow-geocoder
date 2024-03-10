@@ -130,3 +130,5 @@ Data/geotiff/
 *.H5
 
 *.tif
+
+Data/

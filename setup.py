@@ -13,6 +13,8 @@ setup(
         'gdal',
         'numpy',
         'tqdm',
+        'pytest',
+        'pytest-mock'
     ],
     entry_points={
         'console_scripts': [
