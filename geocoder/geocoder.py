@@ -12,6 +12,7 @@ import xarray as xr
 from pathlib import Path
 from tqdm import tqdm
 import warnings
+import pygrib
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -71,14 +72,20 @@ class Geocoder:
         self.product = product.upper()
         self.file = file
         self.outfile = outfile
-        self.engine = 'cfgrib' if self.product not in ['H10', 'H34'] else 'netcdf4'
+        self.engine = 'netcdf4'
         self.projection_key = 'GEOS' if self.product in ['H10', 'H34'] else 'WGS_84'
         self.crs = crs
         self.rotation = self.product in ['H10', 'H34']
 
     def read_data(self):
-        d = xr.open_dataset(self.file, engine=self.engine)
-        data = d[self.DATA_KEY[self.product]].values
+
+        if self.product in ['H13', 'H11', 'H12', 'H35']:
+            grbs = pygrib.open(self.file)
+            data = grbs[1].values
+            grbs.close()
+        else:
+            d = xr.open_dataset(self.file, engine=self.engine)
+            data = d[self.DATA_KEY[self.product]].values
         return np.flip(data) if self.rotation else data
 
     def write_data(self, data):
@@ -116,8 +123,8 @@ class Geocoder:
 
 
 if __name__ == '__main__':
-    product = 'H10'
-    folder = '/mnt/c/Users/cagri/Desktop/Projects/Github/hsaf-snow-geocoder/Data'
-    file = folder + '/merged/h10_20240106_day_merged.H5'
-    outfile = folder + '/geotiff/h10_projected.tif'
+    product = 'H35'
+    folder = '/Users/cak/Desktop/Projects/hsaf-snow-geocoder/Data'
+    file = folder + '/h35_20240106_day_merged.grib2'
+    outfile = folder + '/geotiff/h35_projected.tif'
     geocoder = Geocoder(product, file, outfile).project()
