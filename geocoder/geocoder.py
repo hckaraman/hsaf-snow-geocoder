@@ -12,7 +12,6 @@ import xarray as xr
 from pathlib import Path
 from tqdm import tqdm
 import warnings
-import pygrib
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -72,20 +71,14 @@ class Geocoder:
         self.product = product.upper()
         self.file = file
         self.outfile = outfile
-        self.engine = 'netcdf4'
+        self.engine = 'cfgrib' if self.product not in ['H10', 'H34'] else 'netcdf4'
         self.projection_key = 'GEOS' if self.product in ['H10', 'H34'] else 'WGS_84'
         self.crs = crs
         self.rotation = self.product in ['H10', 'H34']
 
     def read_data(self):
-
-        if self.product in ['H13', 'H11', 'H12', 'H35']:
-            grbs = pygrib.open(self.file)
-            data = grbs[1].values
-            grbs.close()
-        else:
-            d = xr.open_dataset(self.file, engine=self.engine)
-            data = d[self.DATA_KEY[self.product]].values
+        d = xr.open_dataset(self.file, engine=self.engine)
+        data = d[self.DATA_KEY[self.product]].values
         return np.flip(data) if self.rotation else data
 
     def write_data(self, data):
