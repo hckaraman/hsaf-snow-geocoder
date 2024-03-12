@@ -8,7 +8,8 @@ setup(
     install_requires=[
         'typer',
         'h5py',
-        'pygrib',
+        'cfgrib',
+        'ecCodes',
         'xarray',
         'gdal',
         'numpy',
