@@ -67,6 +67,9 @@ class Geocoder:
 
     DATA_KEY = {'H10': 'SC', 'H11': 'rssc', 'H34': 'SC', 'H35': 'rssc', 'H12': 'rssc', 'H13': 'rssc'}
 
+    DATA_SHAPE = {'H10': (916, 1902), 'H11': (201, 281), 'H34': (3712, 3712), 'H35': (8999, 35999), 'H12': (5001, 7001),
+                  'H13': (201, 281)}
+
     def __init__(self, product, file, outfile, crs='4326'):
         self.product = product.upper()
         self.file = file
@@ -79,6 +82,10 @@ class Geocoder:
     def read_data(self):
         d = xr.open_dataset(self.file, engine=self.engine)
         data = d[self.DATA_KEY[self.product]].values
+
+        if data.shape != self.DATA_SHAPE[self.product]:
+            raise ValueError(f"Invalid data shape. Expected {self.DATA_SHAPE[self.product]}, got {data.shape}")
+
         return np.flip(data) if self.rotation else data
 
     def write_data(self, data):
@@ -116,8 +123,8 @@ class Geocoder:
 
 
 if __name__ == '__main__':
-    product = 'H35'
+    product = 'H13'
     folder = '/Users/cak/Desktop/Projects/hsaf-snow-geocoder/Data'
-    file = folder + '/h35_20240106_day_merged.grib2'
-    outfile = folder + '/geotiff/h35_projected.tif'
+    file = folder + '/h12_20240106_day_merged.grib2'
+    outfile = folder + '/geotiff/h12_projected.tif'
     geocoder = Geocoder(product, file, outfile).project()
