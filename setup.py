@@ -9,7 +9,7 @@ setup(
         'typer',
         'h5py',
         'cfgrib',
-        'ecCodes',
+        'eccodes',
         'xarray',
         'gdal',
         'numpy',
