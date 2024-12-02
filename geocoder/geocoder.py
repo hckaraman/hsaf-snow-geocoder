@@ -12,6 +12,7 @@ import xarray as xr
 from pathlib import Path
 from tqdm import tqdm
 import warnings
+from pyproj import CRS
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -54,6 +55,28 @@ class Geocoder:
     PROJECTION_DICT = {
         'GEOS': 'PROJCS["unknown",GEOGCS["GCS_unknown",DATUM["D_unknown",SPHEROID["unknown",6378169,295.488065897014]],PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]],PROJECTION["Geostationary_Satellite"],PARAMETER["central_meridian",0],PARAMETER["satellite_height",35785831],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH]]',
         'WGS_84': 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AXIS["Latitude",NORTH],AXIS["Longitude",EAST],AUTHORITY["EPSG","4326"]]',
+        'GEOS_MTG': 'PROJCS["unknown",GEOGCS["unknown",DATUM["D_Unknown_based_on_WGS_84_ellipsoid",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]]],PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]],PROJECTION["Geostationary_Satellite"],PARAMETER["central_meridian",0],PARAMETER["satellite_height",35786400],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH]]',
+        'EASE': 'PROJCS["WGS 84 / NSIDC EASE-Grid 2.0 North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_center",90],PARAMETER["longitude_of_center",0],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",SOUTH],AXIS["Northing",SOUTH],AUTHORITY["EPSG","6931"]]'
+    }
+
+    # PROJECTION_DICT = {
+    #     'GEOS': CRS.from_proj4(
+    #         "+proj=geos +lon_0=0 +h=35785831 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+    #     ),
+    #     'WGS_84': CRS.from_epsg(4326),  # EPSG code for WGS 84
+    #     'GEOS_MTG': CRS.from_proj4(
+    #         "+proj=geos +lon_0=0 +h=35786400 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+    #     ),
+    #     'EASE': CRS.from_proj4(
+    #         "+proj=laea +lat_0=90 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+    #     ),
+    # }
+
+    PROJECTION_MAP = {
+        'H10': 'GEOS',
+        'H34': 'GEOS',
+        'H43': 'GEOS_MTG',
+        'H65': 'EASE'
     }
 
     TRANSFORM_DICT = {
@@ -63,19 +86,23 @@ class Geocoder:
         'H13': (-25.125, 0.25, 0.0, 75.125, 0.0, -0.25),
         'H12': (-25.005, 0.01, 0.0, 75.005, 0.0, -0.01),
         'H35': (-179.995, 0.01, 0.0, 89.995, 0.0, -0.01),
+        'H43': (-5567999.994203018, 1999.9999979177508, 0.0, 5567999.994203017, 0.0, -1999.9999979177508),
+        'H65': (-9000000.0, 25000.0, 0.0, 9000000.0, 0.0, -25000.0)
     }
 
-    DATA_KEY = {'H10': 'SC', 'H11': 'rssc', 'H34': 'SC', 'H35': 'rssc', 'H12': 'rssc', 'H13': 'rssc'}
+    DATA_KEY = {'H10': 'SC', 'H11': 'rssc', 'H34': 'SC', 'H35': 'rssc', 'H12': 'rssc', 'H13': 'rssc', 'H43': 'SC',
+                'H65': 'swe'}
 
     DATA_SHAPE = {'H10': (916, 1902), 'H11': (201, 281), 'H34': (3712, 3712), 'H35': (8999, 35999), 'H12': (5001, 7001),
-                  'H13': (201, 281)}
+                  'H13': (201, 281), 'H43': (5568, 5568), 'H65': (720, 720)}
 
     def __init__(self, product, file, outfile, crs='4326'):
         self.product = product.upper()
         self.file = file
         self.outfile = outfile
-        self.engine = 'cfgrib' if self.product not in ['H10', 'H34'] else 'netcdf4'
-        self.projection_key = 'GEOS' if self.product in ['H10', 'H34'] else 'WGS_84'
+        self.engine = 'cfgrib' if self.product not in ['H10', 'H34', 'H43', 'H65'] else 'netcdf4'
+        self.projection_key = self.PROJECTION_MAP.get(self.product, 'WGS_84')
+
         self.crs = crs
         self.rotation = self.product in ['H10', 'H34']
 
@@ -102,7 +129,7 @@ class Geocoder:
         outdata.FlushCache()
         return temp_filename
 
-    def msg_to_wgs84(self, temp_filename):
+    def project_to_wgs84(self, temp_filename):
         with tempfile.NamedTemporaryFile(delete=False, suffix='.vrt') as tmp_vrt:
             warp_options = gdal.WarpOptions(format='VRT', dstSRS='EPSG:4326')
             gdal.Warp(destNameOrDestDS=tmp_vrt.name, srcDSOrSrcDSTab=temp_filename, options=warp_options)
@@ -116,15 +143,19 @@ class Geocoder:
             pbar.update()
             temp_filename = self.write_data(data)
             pbar.update()
-            if self.projection_key == 'GEOS' and self.crs == '4326':
-                self.msg_to_wgs84(temp_filename)
+            if self.projection_key in ['GEOS', 'EASE'] and self.crs == '4326':
+                self.project_to_wgs84(temp_filename)
+
             print(f'{self.outfile} is created')
             pbar.update()
 
 
 if __name__ == '__main__':
-    product = 'H13'
-    folder = '/Users/cak/Desktop/Projects/hsaf-snow-geocoder/Data'
-    file = folder + '/h12_20240106_day_merged.grib2'
-    outfile = folder + '/geotiff/h12_projected.tif'
-    geocoder = Geocoder(product, file, outfile).project()
+    product = 'H65'
+    folder = '/Volumes/external/Projects/HSAF/H65/output'
+    file = folder + '/h65_20241130_SWE.nc'
+    outfile = folder + '/h65_20241130_SWE.tif'
+    crs = '6931'  # EASEGrid
+    geocoder = Geocoder(product, file, outfile, crs=crs).project()
+
+# !TODO check H43 GO ES implementation
