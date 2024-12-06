@@ -85,7 +85,7 @@ class Geocoder:
         'H34': (5567248.074173927, -3000.4031658172607, 0.0, -5567248.074173927, 0.0, 3000.4031658172607),
         'H13': (-25.125, 0.25, 0.0, 75.125, 0.0, -0.25),
         'H12': (-25.005, 0.01, 0.0, 75.005, 0.0, -0.01),
-        'H35': (-179.995, 0.01, 0.0, 89.995, 0.0, -0.01),
+        'H35': (-180.0, 0.01, 0.0, 90.0, 0.0, -0.01),
         'H43': (-5567999.994203018, 1999.9999979177508, 0.0, 5567999.994203017, 0.0, -1999.9999979177508),
         'H65': (-9000000.0, 25000.0, 0.0, 9000000.0, 0.0, -25000.0)
     }
@@ -139,7 +139,9 @@ class Geocoder:
 
     def project(self):
         with tqdm(total=2, desc="Projecting", ncols=80) as pbar:
-            data = self.read_data()
+            # data = self.read_data()
+            data = xr.open_dataset(self.file)
+            data = data.data.values
             pbar.update()
             temp_filename = self.write_data(data)
             pbar.update()
@@ -151,11 +153,21 @@ class Geocoder:
 
 
 if __name__ == '__main__':
-    product = 'H65'
-    folder = '/Volumes/external/Projects/HSAF/H65/output'
-    file = folder + '/h65_20241130_SWE.nc'
-    outfile = folder + '/h65_20241130_SWE.tif'
-    crs = '6931'  # EASEGrid
-    geocoder = Geocoder(product, file, outfile, crs=crs).project()
+    product = 'H35'
+    folder = '/Volumes/external/Projects/HSAF/H35/input'
+    import glob
+    files = glob.glob1(folder, '*ndsi*.hdf')
+    for file in files:
+        file = folder + '/' + file
+        outfile =  file.split('.')[0] + '.tif'
+        try:
+            geocoder = Geocoder(product, file, outfile).project()
+        except Exception as e:
+            print(e)
+
+    # file = folder + '/eps_M01_20200817_2240_0022_ndsi.hdf'
+    # outfile = folder + '/eps_M01_20200817_2240_0022_ndsi.tif'
+    # # crs = '6931'  # EASEGrid
+    # geocoder = Geocoder(product, file, outfile).project()
 
 # !TODO check H43 GO ES implementation
