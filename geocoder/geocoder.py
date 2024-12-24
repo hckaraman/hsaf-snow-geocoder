@@ -4,7 +4,7 @@ Author: Cagri Karaman
 Date: 2024-03-10
 Version: 0.1
 """
-
+import os
 import tempfile
 import numpy as np
 from osgeo import gdal, osr
@@ -12,7 +12,8 @@ import xarray as xr
 from pathlib import Path
 from tqdm import tqdm
 import warnings
-from pyproj import CRS
+
+# from pyproj import CRS
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -120,7 +121,7 @@ class Geocoder:
         options = ['COMPRESS=LZW']
 
         temp_filename = tempfile.mktemp(
-            suffix='.tif') if self.projection_key == 'GEOS' and self.crs == '4326' else self.outfile
+            suffix='.tif') if self.projection_key in ['GEOS','GEOS_MTG','EASE'] and self.crs == '4326' else self.outfile
 
         outdata = driver.Create(temp_filename, data.shape[1], data.shape[0], 1, gdal.GDT_Int16, options=options)
         outdata.SetGeoTransform(self.TRANSFORM_DICT[self.product])
@@ -130,22 +131,36 @@ class Geocoder:
         return temp_filename
 
     def project_to_wgs84(self, temp_filename):
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.vrt') as tmp_vrt:
+        # Check if cropping is needed
+        if self.product == 'H10':
+            crop_bounds = [-20, 25, 45, 75]  # [min_lon, min_lat, max_lon, max_lat]
+            warp_options = gdal.WarpOptions(format='VRT',
+                                            dstSRS='EPSG:4326',
+                                            outputBounds=crop_bounds)
+        else:
             warp_options = gdal.WarpOptions(format='VRT', dstSRS='EPSG:4326')
-            gdal.Warp(destNameOrDestDS=tmp_vrt.name, srcDSOrSrcDSTab=temp_filename, options=warp_options)
 
-            translate_options = gdal.TranslateOptions(format='GTiff', creationOptions=['COMPRESS=LZW'])
-            gdal.Translate(destName=self.outfile, srcDS=tmp_vrt.name, options=translate_options)
+        # Temporary VRT file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.vrt') as tmp_vrt:
+            # Project to WGS84 with or without cropping
+            gdal.Warp(destNameOrDestDS=tmp_vrt.name,
+                      srcDSOrSrcDSTab=temp_filename,
+                      options=warp_options)
+
+            # Translate to GeoTIFF with compression
+            translate_options = gdal.TranslateOptions(format='GTiff',
+                                                      creationOptions=['COMPRESS=LZW'])
+            gdal.Translate(destName=self.outfile,
+                           srcDS=tmp_vrt.name,
+                           options=translate_options)
 
     def project(self):
         with tqdm(total=2, desc="Projecting", ncols=80) as pbar:
-            # data = self.read_data()
-            data = xr.open_dataset(self.file)
-            data = data.data.values
+            data = self.read_data()
             pbar.update()
             temp_filename = self.write_data(data)
             pbar.update()
-            if self.projection_key in ['GEOS', 'EASE'] and self.crs == '4326':
+            if self.projection_key in ['GEOS', 'EASE', 'GEOS_MTG'] and self.crs == '4326':
                 self.project_to_wgs84(temp_filename)
 
             print(f'{self.outfile} is created')
@@ -153,21 +168,13 @@ class Geocoder:
 
 
 if __name__ == '__main__':
-    product = 'H35'
-    folder = '/Volumes/external/Projects/HSAF/H35/input'
     import glob
-    files = glob.glob1(folder, '*ndsi*.hdf')
+
+    product = 'H43'
+    folder = r'D:\HSAF\H43\output'
+
+    files = glob.glob1(folder, '*.H5')
+
     for file in files:
-        file = folder + '/' + file
-        outfile =  file.split('.')[0] + '.tif'
-        try:
-            geocoder = Geocoder(product, file, outfile).project()
-        except Exception as e:
-            print(e)
-
-    # file = folder + '/eps_M01_20200817_2240_0022_ndsi.hdf'
-    # outfile = folder + '/eps_M01_20200817_2240_0022_ndsi.tif'
-    # # crs = '6931'  # EASEGrid
-    # geocoder = Geocoder(product, file, outfile).project()
-
-# !TODO check H43 GO ES implementation
+        fname = folder + '/' + file
+        geocoder = Geocoder(product, fname, fname.replace('H5', 'tif'),crs='4326').project()
