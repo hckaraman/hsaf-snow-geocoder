@@ -55,6 +55,7 @@ class Geocoder:
 
     PROJECTION_DICT = {
         'GEOS': 'PROJCS["unknown",GEOGCS["GCS_unknown",DATUM["D_unknown",SPHEROID["unknown",6378169,295.488065897014]],PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]],PROJECTION["Geostationary_Satellite"],PARAMETER["central_meridian",0],PARAMETER["satellite_height",35785831],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH]]',
+        'GEOS_IND': 'PROJCS["unknown",GEOGCS["GCS_unknown",DATUM["D_unknown",SPHEROID["unknown",6378169,295.488065897014]],PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]],PROJECTION["Geostationary_Satellite"],PARAMETER["central_meridian",45.5],PARAMETER["satellite_height",35785831],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH]]',
         'WGS_84': 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AXIS["Latitude",NORTH],AXIS["Longitude",EAST],AUTHORITY["EPSG","4326"]]',
         'GEOS_MTG': 'PROJCS["unknown",GEOGCS["unknown",DATUM["D_Unknown_based_on_WGS_84_ellipsoid",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]]],PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]],PROJECTION["Geostationary_Satellite"],PARAMETER["central_meridian",0],PARAMETER["satellite_height",35786400],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH]]',
         'EASE': 'PROJCS["WGS 84 / NSIDC EASE-Grid 2.0 North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_center",90],PARAMETER["longitude_of_center",0],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",SOUTH],AXIS["Northing",SOUTH],AUTHORITY["EPSG","6931"]]'
@@ -76,7 +77,9 @@ class Geocoder:
     PROJECTION_MAP = {
         'H10': 'GEOS',
         'H34': 'GEOS',
+        'H34_IND': 'GEOS_IND',
         'H43': 'GEOS_MTG',
+        'H43_MNT': 'GEOS_MTG',
         'H65': 'EASE'
     }
 
@@ -84,24 +87,26 @@ class Geocoder:
         'H10': (3770007.5181810227, -3000.4031658172607, 0.0, 2635854.6990046464, 0.0, 3000.4031658172607),
         'H11': (-25.125, 0.25, 0.0, 75.125, 0.0, -0.25),
         'H34': (5567248.074173927, -3000.4031658172607, 0.0, -5567248.074173927, 0.0, 3000.4031658172607),
+        'H34_IND': (-5570248.5, 3000.403076171875, 0.0, 5570248.5, 0.0, -3000.403076171875),
         'H13': (-25.125, 0.25, 0.0, 75.125, 0.0, -0.25),
         'H12': (-25.005, 0.01, 0.0, 75.005, 0.0, -0.01),
         'H35': (-180.0, 0.01, 0.0, 90.0, 0.0, -0.01),
         'H43': (-5567999.994203018, 1999.9999979177508, 0.0, 5567999.994203017, 0.0, -1999.9999979177508),
+        'H43_MNT': (-5567999.994203018, 1999.9999979177508, 0.0, 5567999.994203017, 0.0, -1999.9999979177508),
         'H65': (-9000000.0, 25000.0, 0.0, 9000000.0, 0.0, -25000.0)
     }
 
-    DATA_KEY = {'H10': 'SC', 'H11': 'rssc', 'H34': 'SC', 'H35': 'rssc', 'H12': 'rssc', 'H13': 'rssc', 'H43': 'SC',
-                'H65': 'swe'}
+    DATA_KEY = {'H10': 'SC', 'H11': 'rssc', 'H34': 'SC', 'H35': 'rssc', 'H12': 'rssc', 'H13': 'rssc', 'H43': 'merged_sc',
+                'H65': 'swe','H34_IND' : 'SC', 'H43_MNT': 'SC'}
 
     DATA_SHAPE = {'H10': (916, 1902), 'H11': (201, 281), 'H34': (3712, 3712), 'H35': (8999, 35999), 'H12': (5001, 7001),
-                  'H13': (201, 281), 'H43': (5568, 5568), 'H65': (720, 720)}
+                  'H13': (201, 281), 'H43': (5568, 5568), 'H65': (720, 720),'H34_IND': (3712, 3712), 'H43_MNT': (5568, 5568)}
 
     def __init__(self, product, file, outfile, crs='4326'):
         self.product = product.upper()
         self.file = file
         self.outfile = outfile
-        self.engine = 'cfgrib' if self.product not in ['H10', 'H34', 'H43', 'H65'] else 'netcdf4'
+        self.engine = 'cfgrib' if self.product not in ['H10', 'H34','H43_MNT','H43','H34_IND', 'H65'] else 'netcdf4'
         self.projection_key = self.PROJECTION_MAP.get(self.product, 'WGS_84')
 
         self.crs = crs
@@ -121,7 +126,7 @@ class Geocoder:
         options = ['COMPRESS=LZW']
 
         temp_filename = tempfile.mktemp(
-            suffix='.tif') if self.projection_key in ['GEOS','GEOS_MTG','EASE'] and self.crs == '4326' else self.outfile
+            suffix='.tif') if self.projection_key in ['GEOS','GEOS_MTG','EASE','GEOS_IND'] and self.crs == '4326' else self.outfile
 
         outdata = driver.Create(temp_filename, data.shape[1], data.shape[0], 1, gdal.GDT_Int16, options=options)
         outdata.SetGeoTransform(self.TRANSFORM_DICT[self.product])
@@ -133,7 +138,7 @@ class Geocoder:
     def project_to_wgs84(self, temp_filename):
         # Check if cropping is needed
         if self.product == 'H10':
-            crop_bounds = [-20, 25, 45, 75]  # [min_lon, min_lat, max_lon, max_lat]
+            crop_bounds = [-20, 27, 45, 75]  # [min_lon, min_lat, max_lon, max_lat]
             warp_options = gdal.WarpOptions(format='VRT',
                                             dstSRS='EPSG:4326',
                                             outputBounds=crop_bounds)
@@ -160,7 +165,7 @@ class Geocoder:
             pbar.update()
             temp_filename = self.write_data(data)
             pbar.update()
-            if self.projection_key in ['GEOS', 'EASE', 'GEOS_MTG'] and self.crs == '4326':
+            if self.projection_key in ['GEOS', 'GEOS_IND','EASE', 'GEOS_MTG'] and self.crs == '4326':
                 self.project_to_wgs84(temp_filename)
 
             print(f'{self.outfile} is created')
@@ -168,13 +173,10 @@ class Geocoder:
 
 
 if __name__ == '__main__':
-    import glob
 
     product = 'H43'
-    folder = r'D:\HSAF\H43\output'
+    folder = '/Users/cak/Desktop/Projects/HSAF_Snow_Quicklook/data'
 
-    files = glob.glob1(folder, '*.H5')
-
-    for file in files:
-        fname = folder + '/' + file
-        geocoder = Geocoder(product, fname, fname.replace('H5', 'tif'),crs='4326').project()
+    file = 'h43_20250120_day_merged.nc'
+    fname = folder + '/' + file
+    geocoder = Geocoder(product, fname, fname.replace('nc', 'tif'),crs='4326').project()
