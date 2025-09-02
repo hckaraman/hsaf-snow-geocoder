@@ -1,8 +1,8 @@
 """
 This script is used to project the HSAF snow products to WGS84 or GEOS coordinate system.
 Author: Cagri Karaman
-Date: 2024-03-10
-Version: 0.1
+Date: 2025-04-11
+Version: 0.2
 """
 import os
 import tempfile
@@ -54,25 +54,12 @@ class Geocoder:
         """
 
     PROJECTION_DICT = {
-        'GEOS': 'PROJCS["unknown",GEOGCS["GCS_unknown",DATUM["D_unknown",SPHEROID["unknown",6378169,295.488065897014]],PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]],PROJECTION["Geostationary_Satellite"],PARAMETER["central_meridian",0],PARAMETER["satellite_height",35785831],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH]]',
-        'GEOS_IND': 'PROJCS["unknown",GEOGCS["GCS_unknown",DATUM["D_unknown",SPHEROID["unknown",6378169,295.488065897014]],PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]],PROJECTION["Geostationary_Satellite"],PARAMETER["central_meridian",45.5],PARAMETER["satellite_height",35785831],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH]]',
-        'WGS_84': 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AXIS["Latitude",NORTH],AXIS["Longitude",EAST],AUTHORITY["EPSG","4326"]]',
-        'GEOS_MTG': 'PROJCS["unknown",GEOGCS["unknown",DATUM["D_Unknown_based_on_WGS_84_ellipsoid",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]]],PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]],PROJECTION["Geostationary_Satellite"],PARAMETER["central_meridian",0],PARAMETER["satellite_height",35786400],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH]]',
-        'EASE': 'PROJCS["WGS 84 / NSIDC EASE-Grid 2.0 North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["latitude_of_center",90],PARAMETER["longitude_of_center",0],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",SOUTH],AXIS["Northing",SOUTH],AUTHORITY["EPSG","6931"]]'
+        'GEOS': "+proj=geos +lon_0=0 +h=35785831 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs",
+        'GEOS_IND': "+proj=geos +lon_0=45.5 +h=35785831 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs",
+        'WGS_84': "+proj=longlat +datum=WGS84 +no_defs",
+        'GEOS_MTG': "+proj=geos +lon_0=0 +h=35786400 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs",
+        'EASE': "+proj=laea +lat_0=90 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
     }
-
-    # PROJECTION_DICT = {
-    #     'GEOS': CRS.from_proj4(
-    #         "+proj=geos +lon_0=0 +h=35785831 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
-    #     ),
-    #     'WGS_84': CRS.from_epsg(4326),  # EPSG code for WGS 84
-    #     'GEOS_MTG': CRS.from_proj4(
-    #         "+proj=geos +lon_0=0 +h=35786400 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
-    #     ),
-    #     'EASE': CRS.from_proj4(
-    #         "+proj=laea +lat_0=90 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
-    #     ),
-    # }
 
     PROJECTION_MAP = {
         'H10': 'GEOS',
@@ -96,25 +83,101 @@ class Geocoder:
         'H65': (-9000000.0, 25000.0, 0.0, 9000000.0, 0.0, -25000.0)
     }
 
-    DATA_KEY = {'H10': 'SC', 'H11': 'rssc', 'H34': 'SC', 'H35': 'rssc', 'H12': 'rssc', 'H13': 'rssc', 'H43': 'merged_sc',
-                'H65': 'swe','H34_IND' : 'SC', 'H43_MNT': 'SC'}
+    DATA_KEY = {
+        'H10': {
+            'merged': 'SC',
+            'flat': 'SC',
+            'mountain': 'CSC'
+        },
+        'H11': 'snow_status',
+        'H34': {
+            'merged': 'SC',
+            'flat': 'SC_flat',
+            'mountain': 'SC_mountainous'
+        },
+        'H35': {
+            'merged': 'rssc',
+            'flat': 'SC',
+            'mountain': 'fsc'
+        },
+        'H12': 'rssc',
+        'H13': 'rssc',
+        'H43': {
+            'merged': 'merged_sc',
+            'flat': 'flat_sc',
+            'mountain': 'mountain_sc'
+        },
+        'H65': {
+            'merged': 'swe',
+            'flat': 'swe_flat',
+            'mountain': 'swe_mountain'
+        },
+        'H34_IND': 'SC',
+        'H43_MNT': 'SC'
+    }
 
     DATA_SHAPE = {'H10': (916, 1902), 'H11': (201, 281), 'H34': (3712, 3712), 'H35': (8999, 35999), 'H12': (5001, 7001),
-                  'H13': (201, 281), 'H43': (5568, 5568), 'H65': (720, 720),'H34_IND': (3712, 3712), 'H43_MNT': (5568, 5568)}
+                  'H13': (201, 281), 'H43': (5568, 5568), 'H65': (720, 720), 'H34_IND': (3712, 3712),
+                  'H43_MNT': (5568, 5568)}
 
-    def __init__(self, product, file, outfile, crs='4326'):
+    EXTENSION_DICT = {
+        'H10': 'hdf',
+        'H11': 'grib2',
+        'H12': 'grib2',
+        'H13': 'grib2',
+        'H34': 'hdf',
+        'H35': 'grib2',
+        'H43': 'nc',
+        'H65': 'nc',
+    }
+
+    def __init__(self, product, file, outfile, crs='4326', extension='hdf', variant='merged'):
         self.product = product.upper()
         self.file = file
         self.outfile = outfile
-        self.engine = 'cfgrib' if self.product not in ['H10', 'H34','H43_MNT','H43','H34_IND', 'H65'] else 'netcdf4'
+        self.extension = extension
+        self.engine = 'cfgrib' if self.extension == 'grib2' else 'netcdf4'
         self.projection_key = self.PROJECTION_MAP.get(self.product, 'WGS_84')
 
         self.crs = crs
         self.rotation = self.product in ['H10', 'H34']
+        self.variant = variant
+
+        # Validate the variant
+        if isinstance(self.DATA_KEY[self.product], dict):
+            if not self.variant:
+                self.variant = 'merged'  # Use 'merge' variant if none provided
+            if self.variant not in self.DATA_KEY[self.product]:
+                valid_variants = list(self.DATA_KEY[self.product].keys())
+                raise ValueError(
+                    f"Invalid variant for {self.product}. Expected one of {valid_variants}, got {self.variant}")
+
+        # Validate the extension
+        if self.extension:
+            valid_extensions = {'grib2', 'nc', 'hdf'}
+
+            if self.extension not in valid_extensions:
+                raise ValueError(f"Invalid extension. Expected one of {valid_extensions}, got '{self.extension}'")
+
+            expected_extension = self.EXTENSION_DICT.get(self.product)
+
+            if expected_extension and self.extension != expected_extension:
+                warnings.warn(
+                    f"Invalid extension for {self.product}. Expected '{expected_extension}', got '{self.extension}'",
+                    UserWarning
+                )
 
     def read_data(self):
+
         d = xr.open_dataset(self.file, engine=self.engine)
-        data = d[self.DATA_KEY[self.product]].values
+
+        # Get the appropriate data key
+        if isinstance(self.DATA_KEY[self.product], dict) and self.variant:
+            data_key = self.DATA_KEY[self.product][self.variant]
+        else:
+            data_key = self.DATA_KEY[self.product]
+
+        data = d[data_key].values
 
         if data.shape != self.DATA_SHAPE[self.product]:
             raise ValueError(f"Invalid data shape. Expected {self.DATA_SHAPE[self.product]}, got {data.shape}")
@@ -126,7 +189,8 @@ class Geocoder:
         options = ['COMPRESS=LZW']
 
         temp_filename = tempfile.mktemp(
-            suffix='.tif') if self.projection_key in ['GEOS','GEOS_MTG','EASE','GEOS_IND'] and self.crs == '4326' else self.outfile
+            suffix='.tif') if self.projection_key in ['GEOS', 'GEOS_MTG', 'EASE',
+                                                      'GEOS_IND'] and self.crs == '4326' else self.outfile
 
         outdata = driver.Create(temp_filename, data.shape[1], data.shape[0], 1, gdal.GDT_Int16, options=options)
         outdata.SetGeoTransform(self.TRANSFORM_DICT[self.product])
@@ -138,10 +202,11 @@ class Geocoder:
     def project_to_wgs84(self, temp_filename):
         # Check if cropping is needed
         if self.product == 'H10':
-            crop_bounds = [-20, 27, 45, 75]  # [min_lon, min_lat, max_lon, max_lat]
+            crop_bounds = [-25, 25, 45, 75]  # [min_lon, min_lat, max_lon, max_lat]
             warp_options = gdal.WarpOptions(format='VRT',
                                             dstSRS='EPSG:4326',
-                                            outputBounds=crop_bounds)
+                                            outputBounds=crop_bounds,
+                                            dstNodata=255) # H10 extent does not cover the whole paneuropean region with GEOS proj.
         else:
             warp_options = gdal.WarpOptions(format='VRT', dstSRS='EPSG:4326')
 
@@ -165,7 +230,7 @@ class Geocoder:
             pbar.update()
             temp_filename = self.write_data(data)
             pbar.update()
-            if self.projection_key in ['GEOS', 'GEOS_IND','EASE', 'GEOS_MTG'] and self.crs == '4326':
+            if self.projection_key in ['GEOS', 'GEOS_IND', 'EASE', 'GEOS_MTG'] and self.crs == '4326':
                 self.project_to_wgs84(temp_filename)
 
             print(f'{self.outfile} is created')
@@ -174,9 +239,14 @@ class Geocoder:
 
 if __name__ == '__main__':
 
-    product = 'H43'
     folder = '/Users/cak/Desktop/Projects/HSAF_Snow_Quicklook/data'
+    folder = Path(folder)
 
     file = 'h43_20250120_day_merged.nc'
-    fname = folder + '/' + file
-    geocoder = Geocoder(product, fname, fname.replace('nc', 'tif'),crs='4326').project()
+    fname = folder / file
+    oname = fname.with_suffix('.tif')
+
+
+    h43_coder = Geocoder(product='H43', file=fname, outfile=oname,
+                         crs='4326', variant='merged', extension='nc')
+    h43_coder.project()
