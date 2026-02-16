@@ -2,16 +2,16 @@ import pytest
 from unittest import mock
 from geocoder.geocoder import Geocoder
 import numpy as np
-from unittest.mock import patch
+from unittest.mock import patch, ANY
 import xarray as xr
-from tqdm import tqdm
-from unittest.mock import ANY
+import os
 
-folder = '/mnt/c/Users/cagri/Desktop/Projects/Github/hsaf-snow-geocoder/Data'
-file = folder + '/merged/h10_20240106_day_merged.H5'
-outfile = folder + '/geotiff/h10_projected.tif'
-tempfile_vrt = folder + '/geotiff/temp.vrt'
-tempfile_tif = folder + '/geotiff/temp.tif'
+# Use paths relative to this test file for portability
+DATA_DIR = os.path.join(os.path.dirname(__file__), 'Data')
+file = os.path.join(DATA_DIR, 'h10_20260215_day_merged.H5')
+outfile = os.path.join(DATA_DIR, 'h10_projected.tif')
+tempfile_vrt = os.path.join(DATA_DIR, 'temp.vrt')
+tempfile_tif = os.path.join(DATA_DIR, 'temp.tif')
 
 
 def test_geocoder_initialization():
@@ -20,15 +20,29 @@ def test_geocoder_initialization():
     assert geocoder.file == file
     assert geocoder.outfile == outfile
     assert geocoder.crs == '4326'
-    assert geocoder.engine == 'netcdf4'  # Assuming 'H10' uses 'netcdf4'
-    assert geocoder.projection_key == 'GEOS'  # Assuming 'H10' is associated with 'GEOS'
-    assert geocoder.rotation is True  # Assuming 'H10' requires rotation
+    assert geocoder.engine == 'netcdf4'
+    assert geocoder.projection_key == 'GEOS'
+    assert geocoder.rotation is True
+
+
+def test_geocoder_invalid_product():
+    with pytest.raises(ValueError, match="Unknown product"):
+        Geocoder('INVALID', file, outfile, '4326')
+
+
+def test_geocoder_invalid_variant():
+    with pytest.raises(ValueError, match="Invalid variant"):
+        Geocoder('H10', file, outfile, '4326', variant='nonexistent')
+
+
+def test_geocoder_invalid_extension():
+    with pytest.raises(ValueError, match="Invalid extension"):
+        Geocoder('H10', file, outfile, '4326', extension='xyz')
 
 
 @patch('xarray.open_dataset')
 def test_read_data(mock_open_dataset):
     mock_data_array = xr.DataArray(np.random.randint(0, 100, size=(916, 1902)))
-
     mock_open_dataset.return_value = {'SC': mock_data_array}
 
     geocoder = Geocoder('H10', file, outfile, '4326')
@@ -36,6 +50,25 @@ def test_read_data(mock_open_dataset):
 
     mock_open_dataset.assert_called_once_with(file, engine='netcdf4')
     assert np.array_equal(data, np.flip(mock_data_array))
+
+
+@patch('xarray.open_dataset')
+def test_read_data_missing_variable(mock_open_dataset):
+    mock_open_dataset.return_value = xr.Dataset({'wrong_key': xr.DataArray(np.zeros((916, 1902)))})
+
+    geocoder = Geocoder('H10', file, outfile, '4326')
+    with pytest.raises(KeyError, match="Variable 'SC' not found"):
+        geocoder.read_data()
+
+
+@patch('xarray.open_dataset')
+def test_read_data_wrong_shape(mock_open_dataset):
+    mock_data_array = xr.DataArray(np.random.randint(0, 100, size=(100, 100)))
+    mock_open_dataset.return_value = {'SC': mock_data_array}
+
+    geocoder = Geocoder('H10', file, outfile, '4326')
+    with pytest.raises(ValueError, match="Invalid data shape"):
+        geocoder.read_data()
 
 
 @patch('osgeo.gdal.GetDriverByName')
@@ -52,57 +85,59 @@ def test_write_data(mock_get_driver_by_name):
 
     mock_get_driver_by_name.assert_called_once_with("GTiff")
     mock_driver.Create.assert_called_once()
-    mock_outdata.SetGeoTransform.assert_called_once_with(geocoder.TRANSFORM_DICT['H10'])
-    mock_outdata.SetProjection.assert_called_once_with(geocoder.PROJECTION_DICT['GEOS'])
+    mock_outdata.SetGeoTransform.assert_called_once_with(geocoder._transform)
+    mock_outdata.SetProjection.assert_called_once_with(geocoder._projection_dict['GEOS'])
     mock_outdata.GetRasterBand(1).WriteArray.assert_called_once_with(data)
 
 
 @mock.patch('osgeo.gdal.Translate')
 @mock.patch('osgeo.gdal.Warp')
 @mock.patch('tempfile.NamedTemporaryFile')
-def test_msg_to_wgs84(mock_tempfile, mock_warp, mock_translate):
-    # Setup the mock for tempfile to simulate a temporary file
-    mock_tempfile.return_value.__enter__.return_value.name = tempfile_vrt
+def test_project_to_wgs84(mock_tempfile, mock_warp, mock_translate):
+    mock_tempfile.return_value.name = tempfile_vrt
+    mock_tempfile.return_value.close = mock.Mock()
+    mock_warp.return_value = mock.Mock()  # Non-None means success
+    mock_translate.return_value = mock.Mock()
 
-    # Initialize Geocoder
     geocoder = Geocoder('H10', file, outfile, '4326')
 
-    # Call msg_to_wgs84 with a dummy temp_filename
-    geocoder.msg_to_wgs84(tempfile_tif)
+    with mock.patch('pathlib.Path.exists', return_value=True), \
+         mock.patch('pathlib.Path.unlink'):
+        geocoder.project_to_wgs84(tempfile_tif)
 
-    # Check that gdal.Warp and gdal.Translate are called with the correct parameters
     mock_warp.assert_called_once()
     mock_translate.assert_called_once_with(
         destName=outfile, srcDS=tempfile_vrt, options=mock.ANY
     )
-    # You can add more detailed checks for the options passed to gdal.Warp and gdal.Translate
 
 
-@mock.patch('geocoder.geocoder.Geocoder.msg_to_wgs84')
+@mock.patch('geocoder.geocoder.Geocoder.project_to_wgs84')
 @mock.patch('geocoder.geocoder.Geocoder.write_data')
 @mock.patch('geocoder.geocoder.Geocoder.read_data')
-@mock.patch('geocoder.geocoder.tqdm')
-def test_project(mock_tqdm, mock_read_data, mock_write_data, mock_msg_to_wgs84):
-    # Setup mock responses
+def test_project(mock_read_data, mock_write_data, mock_project_to_wgs84):
     mock_read_data.return_value = xr.DataArray(np.random.randint(0, 100, size=(916, 1902)))
     mock_write_data.return_value = tempfile_tif
 
-    # Initialize Geocoder
     geocoder = Geocoder('H10', file, outfile, '4326')
-
-    # Call project method
     geocoder.project()
 
-    # Verify that the read_data, write_data, and potentially msg_to_wgs84 methods are called
     mock_read_data.assert_called_once()
     mock_write_data.assert_called_once_with(ANY)
 
-
-    # For 'GEOS' products with '4326' CRS, msg_to_wgs84 should be called
+    # For 'GEOS' products with '4326' CRS, project_to_wgs84 should be called
     if geocoder.projection_key == 'GEOS' and geocoder.crs == '4326':
-        mock_msg_to_wgs84.assert_called_once_with(tempfile_tif)
+        mock_project_to_wgs84.assert_called_once_with(tempfile_tif)
     else:
-        mock_msg_to_wgs84.assert_not_called()
+        mock_project_to_wgs84.assert_not_called()
 
-    # Assert the progress bar is updated the expected number of times
-    # assert mock_tqdm.return_value.update.call_count == 3
+
+def test_h34_ind_no_rotation():
+    geocoder = Geocoder('H34_IND', file, outfile, '4326', extension='hdf')
+    assert geocoder.rotation is False
+
+
+def test_h43_mnt_initialization():
+    geocoder = Geocoder('H43_MNT', file, outfile, '4326', extension='nc')
+    assert geocoder.product == 'H43_MNT'
+    assert geocoder.projection_key == 'GEOS_MTG'
+    assert geocoder.rotation is False

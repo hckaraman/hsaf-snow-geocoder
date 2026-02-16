@@ -132,3 +132,4 @@ Data/geotiff/
 *.tif
 
 Data/
+.DS_Store

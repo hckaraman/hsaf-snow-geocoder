@@ -2,9 +2,10 @@ from setuptools import setup, find_packages
 
 setup(
     name='geocoder-cli',
-    version='0.1.0',
+    version='0.2',
     packages=find_packages(),
     include_package_data=True,
+    package_data={'geocoder': ['config.yaml']},
     install_requires=[
         'typer',
         'h5py',
@@ -13,7 +14,7 @@ setup(
         'xarray',
         'gdal',
         'numpy',
-        'tqdm',
+        'pyyaml',
         'pytest',
         'pytest-mock'
     ],

@@ -1,3 +1,5 @@
+import gzip
+import shutil
 import typer
 from geocoder.geocoder import Geocoder
 import os
@@ -55,11 +57,52 @@ def validate_variant(product: str, variant: str) -> bool:
     return variant in variant_dict[product.upper()]
 
 
+def detect_extension(file_path: str) -> str:
+    """Auto-detect the geocoder extension string from a file's suffix."""
+    suffix = Path(file_path).suffix.lower()
+    if suffix in ['.h5', '.hdf']:
+        return 'hdf'
+    elif suffix == '.grib2':
+        return 'grib2'
+    elif suffix in ['.nc', '.nc4', '.netcdf']:
+        return 'nc'
+    return None
+
+
+def _decompress_gz_files(directory: Path) -> int:
+    """Decompress all .gz files in a directory in-place. Returns count of files decompressed."""
+    count = 0
+    for gz_file in sorted(directory.glob('*.gz')):
+        out_file = gz_file.with_suffix('')  # strip .gz
+        with gzip.open(gz_file, 'rb') as f_in, open(out_file, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+        gz_file.unlink()
+        typer.echo(f"  UNZIP {gz_file.name}")
+        count += 1
+    return count
+
+
+def _validate_common(product, crs, variant):
+    """Validate product, CRS, and variant. Returns error message or None."""
+    if not validate_product(product):
+        valid_products = ['H10', 'H11', 'H12', 'H13', 'H34', 'H34_IND', 'H35', 'H43', 'H43_MNT', 'H65']
+        return f"Invalid product code '{product}'. Valid options: {valid_products}"
+
+    if not validate_crs(crs):
+        return f"Invalid CRS '{crs}'. Valid options: ['4326', 'GEOS', 'EASE']"
+
+    if not validate_variant(product, variant):
+        valid_variants = variant_dict.get(product.upper(), ['merged'])
+        return f"Invalid variant '{variant}' for product {product}. Valid options: {valid_variants}"
+
+    return None
+
+
 @app.command()
 def geocode(
     input_file: str = typer.Option(..., "-i", "--input-file",
                                    help="Input file path. Extension should match product requirements."),
-    output_file: str = typer.Option(..., "-o", "--output-file", 
+    output_file: str = typer.Option(..., "-o", "--output-file",
                                     help="Output GeoTIFF file path."),
     product: str = typer.Option(..., "-p", "--product",
                                 help="Product code. Valid products: H10, H11, H12, H13, H34, H34_IND, H35, H43, H43_MNT, H65"),
@@ -71,27 +114,13 @@ def geocode(
                                  help="Override file extension detection. Options: 'hdf', 'grib2', 'nc'. Usually auto-detected.")
 ):
     """
-    Geocode HSAF snow products to WGS84 or other coordinate systems.
-    
-    This tool projects HSAF snow products from their native projections to standard
-    coordinate reference systems like WGS84, GEOS, or EASE.
+    Geocode a single HSAF snow product file to WGS84 or other coordinate systems.
     """
-    
-    # Validate product first
-    if not validate_product(product):
-        valid_products = ['H10', 'H11', 'H12', 'H13', 'H34', 'H34_IND', 'H35', 'H43', 'H43_MNT', 'H65']
-        typer.echo(f"Invalid product code '{product}'. Valid options: {valid_products}")
-        raise typer.Exit(code=1)
 
-    # Validate CRS
-    if not validate_crs(crs):
-        typer.echo(f"Invalid CRS '{crs}'. Valid options: ['4326', 'GEOS', 'EASE']")
-        raise typer.Exit(code=1)
-
-    # Validate variant
-    if not validate_variant(product, variant):
-        valid_variants = variant_dict.get(product.upper(), ['merged'])
-        typer.echo(f"Invalid variant '{variant}' for product {product}. Valid options: {valid_variants}")
+    # Validate common parameters
+    error = _validate_common(product, crs, variant)
+    if error:
+        typer.echo(error)
         raise typer.Exit(code=1)
 
     # Validate input file
@@ -103,15 +132,8 @@ def geocode(
 
     # Auto-detect extension if not provided
     if extension is None:
-        file_path = Path(input_file)
-        file_suffix = file_path.suffix.lower()
-        if file_suffix in ['.h5', '.hdf']:
-            extension = 'hdf'
-        elif file_suffix == '.grib2':
-            extension = 'grib2'
-        elif file_suffix in ['.nc', '.nc4', '.netcdf']:
-            extension = 'nc'
-        else:
+        extension = detect_extension(input_file)
+        if extension is None:
             typer.echo(f"Could not auto-detect extension for file '{input_file}'. Please specify --extension")
             raise typer.Exit(code=1)
 
@@ -144,16 +166,114 @@ def geocode(
             variant=variant
         )
         geocoder.project()
-        typer.echo("✅ Geocoding completed successfully!")
-        
+        typer.echo("Geocoding completed successfully!")
+
     except ValueError as ve:
-        typer.echo(f"❌ Validation error: {ve}")
+        typer.echo(f"Validation error: {ve}")
         raise typer.Exit(code=1)
     except FileNotFoundError as fe:
-        typer.echo(f"❌ File not found: {fe}")
+        typer.echo(f"File not found: {fe}")
         raise typer.Exit(code=1)
     except Exception as e:
-        typer.echo(f"❌ An error occurred during geocoding: {e}")
+        typer.echo(f"An error occurred during geocoding: {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def batch(
+    input_dir: str = typer.Option(..., "-i", "--input-dir",
+                                  help="Directory containing input files to process."),
+    output_dir: str = typer.Option(..., "-o", "--output-dir",
+                                   help="Directory where output GeoTIFF files will be saved."),
+    product: str = typer.Option(..., "-p", "--product",
+                                help="Product code applied to all files. Valid products: H10, H11, H12, H13, H34, H34_IND, H35, H43, H43_MNT, H65"),
+    crs: str = typer.Option('4326', "--crs",
+                           help="Coordinate Reference System. Options: '4326' (WGS84), 'GEOS', 'EASE'. Default: '4326'"),
+    variant: str = typer.Option('merged', "--variant",
+                               help="Data variant. Options: 'merged', 'flat', 'mountain'. Default: 'merged'"),
+    extension: str = typer.Option(None, "--extension",
+                                 help="Override file extension detection. Options: 'hdf', 'grib2', 'nc'. Usually auto-detected."),
+    decompress: bool = typer.Option(False, "--decompress",
+                                    help="Decompress .gz files in the input directory before processing.")
+):
+    """
+    Batch geocode all matching files in a directory.
+
+    Scans the input directory for files whose extension matches the given product
+    and converts each one to a GeoTIFF in the output directory.
+    Use --decompress to automatically gunzip .gz files first.
+    """
+
+    # Validate common parameters
+    error = _validate_common(product, crs, variant)
+    if error:
+        typer.echo(error)
+        raise typer.Exit(code=1)
+
+    input_path = Path(input_dir)
+    if not input_path.is_dir():
+        typer.echo(f"Input directory not found: {input_dir}")
+        raise typer.Exit(code=1)
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # Decompress .gz files if requested
+    if decompress:
+        count = _decompress_gz_files(input_path)
+        if count:
+            typer.echo(f"Decompressed {count} file(s)")
+
+    # Collect matching files
+    valid_suffixes = file_format_dict.get(product.upper(), [])
+    files = sorted([
+        f for f in input_path.iterdir()
+        if f.is_file() and any(f.name.endswith(ext) for ext in valid_suffixes)
+    ])
+
+    if not files:
+        typer.echo(f"No matching files found in '{input_dir}' for product {product} (expected extensions: {valid_suffixes})")
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Found {len(files)} file(s) for product {product} in '{input_dir}'")
+    typer.echo(f"Target CRS: {crs} | Variant: {variant}")
+    typer.echo("-" * 60)
+
+    succeeded = 0
+    failed = 0
+
+    for filepath in files:
+        outfile = output_path / filepath.with_suffix('.tif').name
+
+        # Detect extension per file if not overridden
+        ext = extension
+        if ext is None:
+            ext = detect_extension(str(filepath))
+            if ext is None:
+                typer.echo(f"  SKIP {filepath.name} (unknown extension)")
+                failed += 1
+                continue
+
+        try:
+            geocoder = Geocoder(
+                product=product,
+                file=str(filepath),
+                outfile=str(outfile),
+                crs=crs,
+                extension=ext,
+                variant=variant
+            )
+            geocoder.project()
+            typer.echo(f"  OK   {filepath.name} -> {outfile.name}")
+            succeeded += 1
+        except Exception as e:
+            typer.echo(f"  FAIL {filepath.name}: {e}")
+            failed += 1
+
+    typer.echo("-" * 60)
+    typer.echo(f"Done. {succeeded} succeeded, {failed} failed out of {len(files)} file(s).")
+
+    if failed > 0:
         raise typer.Exit(code=1)
 
 
@@ -162,22 +282,22 @@ def list_products():
     """List all supported HSAF products and their details."""
     products_info = [
         ("H10", "Snow Cover - Europe", "HDF", "GEOS"),
-        ("H11", "Snow Cover - Global", "GRIB2", "WGS84"),
-        ("H12", "Snow Cover - Global", "GRIB2", "WGS84"),
-        ("H13", "Snow Cover - Global", "GRIB2", "WGS84"),
-        ("H34", "Snow Cover - Europe", "HDF", "GEOS"),
-        ("H34_IND", "Snow Cover - India", "HDF", "GEOS_IND"),
+        ("H11", "Snow Cover - Europe", "GRIB2", "WGS84"),
+        ("H12", "Snow Cover - Europe", "GRIB2", "WGS84"),
+        ("H13", "Snow Cover - Europe", "GRIB2", "WGS84"),
+        ("H34", "Snow Cover - Full Disk", "HDF", "GEOS"),
+        ("H34_IND", "Snow Cover - Full Disk Indian Ocean", "HDF", "GEOS_IND"),
         ("H35", "Snow Cover - Global", "GRIB2", "WGS84"),
-        ("H43", "Snow Cover - Europe", "NetCDF", "GEOS_MTG"),
-        ("H43_MNT", "Snow Cover - Mountains", "NetCDF", "GEOS_MTG"),
-        ("H65", "Snow Water Equivalent", "NetCDF", "EASE")
+        ("H43", "Snow Cover - Full Disk", "NetCDF", "GEOS_MTG"),
+        ("H43_MNT", "Snow Cover - Full Disk - Mountains", "NetCDF", "GEOS_MTG"),
+        ("H65", "Snow Water Equivalent - Global", "NetCDF", "EASE")
     ]
-    
+
     typer.echo("Supported HSAF Snow Products:")
     typer.echo("-" * 60)
     typer.echo(f"{'Product':<8} {'Description':<20} {'Format':<8} {'Projection':<12}")
     typer.echo("-" * 60)
-    
+
     for product, desc, format_type, proj in products_info:
         typer.echo(f"{product:<8} {desc:<20} {format_type:<8} {proj:<12}")
 
