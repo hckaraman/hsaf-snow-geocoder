@@ -90,6 +90,14 @@ products:
     rotation: false
     data_key: SC
 
+  H43_HR:
+    projection: GEOS_MTG
+    transform: [-5567999.994203018, 499.9999994794377, 0.0, 5567999.994203017, 0.0, -499.9999994794377]
+    data_shape: [22272, 22272]
+    extension: hdf
+    rotation: false
+    data_key: SC
+
   H65:
     projection: EASE
     transform: [-9000000.0, 25000.0, 0.0, 9000000.0, 0.0, -25000.0]

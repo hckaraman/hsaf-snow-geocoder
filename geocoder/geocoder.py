@@ -6,6 +6,7 @@ Version: 0.2
 """
 import tempfile
 import numpy as np
+import osgeo
 from osgeo import gdal
 import xarray as xr
 from pathlib import Path
@@ -216,13 +217,13 @@ class Geocoder:
 
 if __name__ == '__main__':
 
-    folder = '/Users/cak/Desktop/Projects/HSAF_Snow_Quicklook/data'
+    folder = r'S:\Projects\H43_HR\output'
     folder = Path(folder)
 
-    file = 'h43_20250120_day_merged.nc'
+    file = 'h43_hr_20260316_day_TSMS.H5'
     fname = folder / file
     oname = fname.with_suffix('.tif')
 
-    h43_coder = Geocoder(product='H43', file=fname, outfile=oname,
-                         crs='4326', variant='merged', extension='nc')
+    h43_coder = Geocoder(product='H43_HR', file=fname, outfile=oname,
+                         crs='GEOS', variant='merged', extension='hdf')
     h43_coder.project()

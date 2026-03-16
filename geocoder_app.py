@@ -18,7 +18,8 @@ file_format_dict = {
     'H43': ['nc', 'nc4', 'netcdf'],
     'H65': ['nc', 'nc4', 'netcdf'],
     'H34_IND': ['hdf', 'h5', 'H5'],
-    'H43_MNT': ['nc', 'nc4', 'netcdf']
+    'H43_MNT': ['nc', 'nc4', 'netcdf'],
+    'H43_HR': ['hdf', 'h5', 'H5']
 }
 
 # Valid variants for products that support them
@@ -40,7 +41,7 @@ def validate_file(file_path: str, product: str) -> bool:
 
 def validate_product(product: str) -> bool:
     """Validate product code"""
-    valid_products = ['H10', 'H11', 'H12', 'H13', 'H34', 'H34_IND', 'H35', 'H43', 'H43_MNT', 'H65']
+    valid_products = ['H10', 'H11', 'H12', 'H13', 'H34', 'H34_IND', 'H35', 'H43', 'H43_HR', 'H43_MNT', 'H65']
     return product.upper() in valid_products
 
 
@@ -85,7 +86,7 @@ def _decompress_gz_files(directory: Path) -> int:
 def _validate_common(product, crs, variant):
     """Validate product, CRS, and variant. Returns error message or None."""
     if not validate_product(product):
-        valid_products = ['H10', 'H11', 'H12', 'H13', 'H34', 'H34_IND', 'H35', 'H43', 'H43_MNT', 'H65']
+        valid_products = ['H10', 'H11', 'H12', 'H13', 'H34', 'H34_IND', 'H35', 'H43', 'H43_HR', 'H43_MNT', 'H65']
         return f"Invalid product code '{product}'. Valid options: {valid_products}"
 
     if not validate_crs(crs):
@@ -105,7 +106,7 @@ def geocode(
     output_file: str = typer.Option(..., "-o", "--output-file",
                                     help="Output GeoTIFF file path."),
     product: str = typer.Option(..., "-p", "--product",
-                                help="Product code. Valid products: H10, H11, H12, H13, H34, H34_IND, H35, H43, H43_MNT, H65"),
+                                help="Product code. Valid products: H10, H11, H12, H13, H34, H34_IND, H35, H43, H43_HR, H43_MNT, H65"),
     crs: str = typer.Option('4326', "--crs",
                            help="Coordinate Reference System. Options: '4326' (WGS84), 'GEOS', 'EASE'. Default: '4326'"),
     variant: str = typer.Option('merged', "--variant",
@@ -289,6 +290,7 @@ def list_products():
         ("H34_IND", "Snow Cover - Full Disk Indian Ocean", "HDF", "GEOS_IND"),
         ("H35", "Snow Cover - Global", "GRIB2", "WGS84"),
         ("H43", "Snow Cover - Full Disk", "NetCDF", "GEOS_MTG"),
+        ("H43_HR", "Snow Cover - Full Disk 1km", "HDF", "GEOS_MTG"),
         ("H43_MNT", "Snow Cover - Full Disk - Mountains", "NetCDF", "GEOS_MTG"),
         ("H65", "Snow Water Equivalent - Global", "NetCDF", "EASE")
     ]
