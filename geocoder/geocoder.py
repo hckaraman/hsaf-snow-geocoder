@@ -170,6 +170,12 @@ class Geocoder:
                                             dstSRS='EPSG:4326',
                                             outputBounds=crop_bounds,
                                             dstNodata=255)  # H10 extent does not cover the whole paneuropean region
+        elif self.product == 'H65':
+            # Northern Hemisphere at 0.25° resolution: extent -180.125,-0.125 : 180.125,90.125 → 1441×361
+            warp_options = gdal.WarpOptions(format='VRT',
+                                            dstSRS='EPSG:4326',
+                                            outputBounds=[-180.125, -0.125, 180.125, 90.125],
+                                            xRes=0.25, yRes=0.25)
         else:
             warp_options = gdal.WarpOptions(format='VRT', dstSRS='EPSG:4326')
 
