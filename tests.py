@@ -5,10 +5,12 @@ import numpy as np
 from unittest.mock import patch, ANY
 import xarray as xr
 import os
+import h5py
+import uuid
 
 # Use paths relative to this test file for portability
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'Data')
-file = os.path.join(DATA_DIR, 'h10_20260215_day_merged.H5')
+file = os.path.join(DATA_DIR, 'h10_20240107_day_merged.H5')
 outfile = os.path.join(DATA_DIR, 'h10_projected.tif')
 tempfile_vrt = os.path.join(DATA_DIR, 'temp.vrt')
 tempfile_tif = os.path.join(DATA_DIR, 'temp.tif')
@@ -52,13 +54,25 @@ def test_read_data(mock_open_dataset):
     assert np.array_equal(data, np.flip(mock_data_array))
 
 
+def _workspace_temp_file(name):
+    return os.path.join(DATA_DIR, f"{name}_{uuid.uuid4().hex}.h5")
+
+
 @patch('xarray.open_dataset')
 def test_read_data_missing_variable(mock_open_dataset):
-    mock_open_dataset.return_value = xr.Dataset({'wrong_key': xr.DataArray(np.zeros((916, 1902)))})
+    missing_file = _workspace_temp_file('missing_variable')
+    with h5py.File(missing_file, 'w') as dataset:
+        dataset.create_dataset('wrong_key', data=np.zeros((916, 1902), dtype=np.uint8))
 
-    geocoder = Geocoder('H10', file, outfile, '4326')
-    with pytest.raises(KeyError, match="Variable 'SC' not found"):
-        geocoder.read_data()
+    try:
+        mock_open_dataset.return_value = xr.Dataset({'wrong_key': xr.DataArray(np.zeros((916, 1902)))})
+
+        geocoder = Geocoder('H10', missing_file, outfile, '4326')
+        with pytest.raises(IOError, match="Variable 'SC' not found"):
+            geocoder.read_data()
+    finally:
+        if os.path.exists(missing_file):
+            os.remove(missing_file)
 
 
 @patch('xarray.open_dataset')
@@ -69,6 +83,29 @@ def test_read_data_wrong_shape(mock_open_dataset):
     geocoder = Geocoder('H10', file, outfile, '4326')
     with pytest.raises(ValueError, match="Invalid data shape"):
         geocoder.read_data()
+
+
+@patch('xarray.open_dataset')
+def test_read_data_falls_back_to_h5py_when_xarray_open_fails(mock_open_dataset):
+    fallback_file = _workspace_temp_file('fallback')
+    source_data = np.arange(916 * 1902, dtype=np.int32).reshape((916, 1902))
+
+    with h5py.File(fallback_file, 'w') as dataset:
+        dataset.create_dataset('SC', data=source_data)
+
+    try:
+        mock_open_dataset.side_effect = ImportError(
+            "DLL load failed while importing _netCDF4: The specified procedure could not be found."
+        )
+
+        geocoder = Geocoder('H10', fallback_file, outfile, '4326', extension='hdf')
+        data = geocoder.read_data()
+
+        mock_open_dataset.assert_called_once_with(fallback_file, engine='netcdf4')
+        assert np.array_equal(data, np.flip(source_data))
+    finally:
+        if os.path.exists(fallback_file):
+            os.remove(fallback_file)
 
 
 @patch('osgeo.gdal.GetDriverByName')

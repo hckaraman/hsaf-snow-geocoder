@@ -7,6 +7,7 @@ Version: 0.2
 import tempfile
 import numpy as np
 import osgeo
+import h5py
 from osgeo import gdal
 import xarray as xr
 from pathlib import Path
@@ -117,26 +118,76 @@ class Geocoder:
             raise FileNotFoundError(f"Input file not found: {self.file}")
 
         try:
-            d = xr.open_dataset(self.file, engine=self.engine)
+            data = self._read_data_with_fallback()
         except Exception as e:
-            raise IOError(f"Failed to open '{self.file}' with engine '{self.engine}': {e}") from e
-
-        # Get the appropriate data key
-        if isinstance(self._data_key, dict) and self.variant:
-            data_key = self._data_key[self.variant]
-        else:
-            data_key = self._data_key
-
-        if data_key not in d:
-            available = list(d.data_vars)
-            raise KeyError(f"Variable '{data_key}' not found in dataset. Available variables: {available}")
-
-        data = d[data_key].values
+            raise IOError(f"Failed to read data from '{self.file}': {e}") from e
 
         if data.shape != self._data_shape:
             raise ValueError(f"Invalid data shape for {self.product}. Expected {self._data_shape}, got {data.shape}")
 
         return np.flip(data) if self.rotation else data
+
+    def _get_data_key(self):
+        if isinstance(self._data_key, dict) and self.variant:
+            return self._data_key[self.variant]
+        return self._data_key
+
+    def _read_data_with_fallback(self):
+        data_key = self._get_data_key()
+        errors = []
+
+        try:
+            return self._read_data_with_xarray(data_key)
+        except Exception as exc:
+            errors.append(f"xarray/{self.engine}: {exc}")
+
+        if self.extension != 'grib2':
+            try:
+                return self._read_data_with_h5py(data_key)
+            except Exception as exc:
+                errors.append(f"h5py: {exc}")
+
+        raise IOError("; ".join(errors))
+
+    def _read_data_with_xarray(self, data_key):
+        dataset = xr.open_dataset(self.file, engine=self.engine)
+        try:
+            if data_key not in dataset:
+                available = list(getattr(dataset, 'data_vars', {}).keys())
+                raise KeyError(f"Variable '{data_key}' not found in dataset. Available variables: {available}")
+            return dataset[data_key].values
+        finally:
+            close = getattr(dataset, 'close', None)
+            if callable(close):
+                close()
+
+    def _read_data_with_h5py(self, data_key):
+        with h5py.File(self.file, 'r') as dataset:
+            dataset_path = self._find_h5py_dataset_path(dataset, data_key)
+            return np.asarray(dataset[dataset_path][()])
+
+    @staticmethod
+    def _find_h5py_dataset_path(dataset, data_key):
+        if data_key in dataset and isinstance(dataset[data_key], h5py.Dataset):
+            return data_key
+
+        matches = []
+
+        def _visit(name, obj):
+            if isinstance(obj, h5py.Dataset) and (name == data_key or name.endswith(f'/{data_key}')):
+                matches.append(name)
+
+        dataset.visititems(_visit)
+
+        if matches:
+            return sorted(matches, key=lambda item: (item.count('/'), item))[0]
+
+        available = []
+        dataset.visititems(
+            lambda name, obj: available.append(name)
+            if isinstance(obj, h5py.Dataset) else None
+        )
+        raise KeyError(f"Variable '{data_key}' not found in HDF5 dataset. Available datasets: {available}")
 
     def write_data(self, data):
         driver = gdal.GetDriverByName("GTiff")
